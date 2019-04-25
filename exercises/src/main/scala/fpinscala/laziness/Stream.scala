@@ -100,6 +100,18 @@ trait Stream[+A] {
 
   def startsWith[B](s: Stream[B]): Boolean =
     zipAll(s).filter(_._2.isDefined).forAll{case (a,b) ⇒ a == b}
+
+  def tails: Stream[Stream[A]] =
+    unfold(this){
+      case Empty ⇒ None
+      case Cons(h,t) ⇒ Some((cons(h(),t()),t()))
+    } append Stream(empty)
+
+  def scanRight[B](z: B)(f: (A, => B) => B): Stream[B] =
+    foldRight((z,Stream(z))){ case (a,(zz,streamz)) ⇒
+      val b = f(a,zz)  // eager evaluation of zz!
+      b → cons(b,streamz)
+    }._2
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
