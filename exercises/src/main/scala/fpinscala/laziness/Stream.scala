@@ -81,7 +81,7 @@ trait Stream[+A] {
 
   def mapUF[B](f: A ⇒ B): Stream[B] =
     unfold(this) {
-      case Cons(h, t) ⇒ Some((f(h), t()))
+      case Cons(h, t) ⇒ Some((f(h()), t()))
       case _ ⇒ None
     }
 

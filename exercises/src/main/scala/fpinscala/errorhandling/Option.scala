@@ -62,7 +62,7 @@ object Option {
   def map2[A,B,C](a: Option[A], b: Option[B])(f: (A, B) => C): Option[C] = (a,b) match {
     case (None,_) ⇒ None
     case (_,None) ⇒ None
-    case (Some(`a`),Some(`b`)) ⇒ Some(f(`a`,`b`))
+    case (Some(aa),Some(bb)) ⇒ Some(f(aa,bb))
   }
 
   def sequence[A](a: List[Option[A]]): Option[List[A]] =

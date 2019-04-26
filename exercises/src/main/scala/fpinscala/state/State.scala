@@ -1,5 +1,8 @@
 package fpinscala.state
 
+import fpinscala.gettingstarted.PolymorphicFunctions._
+import fpinscala.state.RNG.{Simple, nonNegativeLessThan}
+
 
 trait RNG {
   def nextInt: (Int, RNG) // Should generate a random `Int`. We'll later define other functions in terms of `nextInt`.
@@ -64,11 +67,36 @@ object RNG {
       }
     }
 
-  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = ???
+  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = rng ⇒ {
+    val (a,rnga) = ra(rng)
+    val (b,rngb) = rb(rnga)
+    f(a,b) → rngb
+  }
 
-  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = ???
+  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = rng ⇒ {
+    fs.foldRight(List.empty[A] → rng){case (a,(list,rngacc)) ⇒
+      map(a)(_ :: list)(rngacc)
+    }
+  }
 
-  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = ???
+  def sequence2[A](fs: List[Rand[A]]): Rand[List[A]] =
+    fs.foldRight(unit(List.empty[A])){case (randA,randListA) ⇒
+      map2(randA,randListA)(_ :: _)
+    }
+
+
+  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = rng ⇒ {
+    val (a, r1) = f(rng)
+
+    g(a)(r1)
+  }
+
+  def nonNegativeLessThan(n: Int): Rand[Int] = {
+    flatMap(nonNegativeInt) { i =>
+      val mod = i % n
+      if (i + (n - 1) - mod >= 0) unit(mod) else nonNegativeLessThan(n)
+    }
+  }
 }
 
 case class State[S,+A](run: S => (A, S)) {
@@ -89,4 +117,15 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 object State {
   type Rand[A] = State[RNG, A]
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+}
+
+object TestState extends App {
+  val (result1, rng1) = nonNegativeLessThan(10)(Simple(47))
+  val result2 = nonNegativeLessThan(10)(rng1)._1
+
+  assert(result1 >= 0)
+  assert(result1 < 10)
+  assert(result2 >= 0)
+  assert(result2 < 10)
+  assert(result1 != result2)
 }
