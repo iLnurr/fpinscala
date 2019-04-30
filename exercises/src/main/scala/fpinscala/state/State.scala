@@ -111,9 +111,9 @@ case class State[S,+A](run: S => (A, S)) {
   })
 
   def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] = State(s ⇒ {
-    val (a,sa) = run(s)
-    val (b,sb) = run(sa)
-    f(a,b) → sb
+    val (a,saa) = run(s)
+    val (b,sbb) = sb.run(saa)
+    f(a,b) → sbb
   })
   def flatMap[B](f: A => State[S, B]): State[S, B] = State(s ⇒ {
     val (a,ss) = run(s)
@@ -136,7 +136,22 @@ object State {
   def sequence[S,A](fs: List[State[S,A]]): State[S,List[A]] =
     fs.foldRight(unit[S,List[A]](List()))((stateA,stateList) ⇒ stateA.map2(stateList)(_ :: _))
 
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+  def updateMachine: Input ⇒ Machine ⇒ Machine = (i: Input) => (s: Machine) =>
+    (i, s) match {
+      case (_, Machine(_, 0, _)) => s
+      case (Coin, Machine(false, _, _)) => s
+      case (Turn, Machine(true, _, _)) => s
+      case (Coin, Machine(true, candy, coin)) =>
+        Machine(locked = false, candy, coin + 1)
+      case (Turn, Machine(false, candy, coin)) =>
+        Machine(locked = true, candy - 1, coin)
+    }
+
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int,Int)] = {
+    inputs
+      .foldRight(State[Machine,Machine](m ⇒ (m,m)))((in,acc) ⇒ acc.map(m ⇒ updateMachine(in)(m)))
+      .map(m ⇒ (m.coins, m.candies))
+  }
 }
 
 object TestState extends App {
