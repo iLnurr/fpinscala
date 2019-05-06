@@ -75,7 +75,7 @@ object Par {
     fork(unit(a))
 
   def asyncF[A, B](f: A => B): A => Par[B] =
-    lazyUnit(_)
+    a => lazyUnit(f(a))
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
