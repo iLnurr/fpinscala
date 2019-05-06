@@ -1,7 +1,9 @@
 package fpinscala.parallelism
 
 import java.util.concurrent._
-import language.implicitConversions
+import java.util.concurrent.atomic.AtomicReference
+
+import scala.language.implicitConversions
 
 object Par {
   type Par[A] = ExecutorService => Future[A]
@@ -16,32 +18,39 @@ object Par {
     def isCancelled = false 
     def cancel(evenIfRunning: Boolean): Boolean = false 
   }
+
+  case class Map2Future[A,B,C](a: Future[A], b: Future[B],
+                               f: (A,B) => C) extends Future[C] {
+    val cache: AtomicReference[Option[C]] = new AtomicReference[Option[C]](None)
+    def isDone = cache.get().isDefined
+    def isCancelled = a.isCancelled || b.isCancelled
+    def cancel(evenIfRunning: Boolean) =
+      a.cancel(evenIfRunning) || b.cancel(evenIfRunning)
+    def get = compute(Long.MaxValue)
+    def get(timeout: Long, units: TimeUnit): C =
+      compute(TimeUnit.NANOSECONDS.convert(timeout, units))
+
+    private def compute(timeoutInNanos: Long): C = cache.get() match {
+      case Some(c) => c
+      case None =>
+        val start = System.nanoTime
+        val ar = a.get(timeoutInNanos, TimeUnit.NANOSECONDS)
+        val stop = System.nanoTime;val aTime = stop-start
+        val br = b.get(timeoutInNanos - aTime, TimeUnit.NANOSECONDS)
+        val ret = f(ar, br)
+        cache.set(Some(ret))
+        ret
+    }
+  }
   
-  def map2[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] =
-  // `map2` doesn't evaluate the call to `f` in a separate logical thread,
-  // in accord with our design choice of having `fork` be the sole function in the API for controlling parallelism.
-  // We can always do `fork(map2(a,b)(f))` if we want the evaluation of `f` to occur in a separate thread.
+  def map2[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] = // `map2` doesn't evaluate the call to `f` in a separate logical thread, in accord with our design choice of having `fork` be the sole function in the API for controlling parallelism. We can always do `fork(map2(a,b)(f))` if we want the evaluation of `f` to occur in a separate thread.
     (es: ExecutorService) => {
       val af = a(es) 
       val bf = b(es)
-      UnitFuture(f(af.get, bf.get)) // This implementation of `map2` does _not_ respect timeouts,
-      // and eagerly waits for the returned futures.
-      // This means that even if you have passed in "forked" arguments,
-      // using this map2 on them will make them wait.
-      // It simply passes the `ExecutorService` on to both `Par` values,
-      // waits for the results of the Futures `af` and `bf`, applies `f` to them, and wraps them in a `UnitFuture`.
-      // In order to respect timeouts, we'd need a new `Future` implementation that records the amount of time spent evaluating `af`,
-      // then subtracts that time from the available time allocated for evaluating `bf`.
+      Map2Future(af,bf,f)
     }
   
-  def fork[A](a: => Par[A]): Par[A] =
-  // This is the simplest and most natural implementation of `fork`,
-  // but there are some problems with it
-  // --for one, the outer `Callable` will block waiting for the "inner" task to complete.
-  // Since this blocking occupies a thread in our thread pool, or whatever resource backs the `ExecutorService`,
-  // this implies that we're losing out on some potential parallelism.
-  // Essentially, we're using two threads when one should suffice.
-  // This is a symptom of a more serious problem with the implementation, and we will discuss this later in the chapter.
+  def fork[A](a: => Par[A]): Par[A] = // This is the simplest and most natural implementation of `fork`, but there are some problems with it--for one, the outer `Callable` will block waiting for the "inner" task to complete. Since this blocking occupies a thread in our thread pool, or whatever resource backs the `ExecutorService`, this implies that we're losing out on some potential parallelism. Essentially, we're using two threads when one should suffice. This is a symptom of a more serious problem with the implementation, and we will discuss this later in the chapter.
     es => es.submit(new Callable[A] { 
       def call = a(es).get
     })
@@ -62,6 +71,12 @@ object Par {
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
 
+  def lazyUnit[A](a: => A): Par[A] =
+    fork(unit(a))
+
+  def asyncF[A, B](f: A => B): A => Par[B] =
+    lazyUnit(_)
+
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
@@ -72,7 +87,6 @@ object Par {
 }
 
 object Examples {
-  import Par._
   def sum(ints: IndexedSeq[Int]): Int = // `IndexedSeq` is a superclass of random-access sequences like `Vector` in the standard library. Unlike lists, these sequences provide an efficient `splitAt` method for dividing them into two parts at a particular index.
     if (ints.size <= 1)
       ints.headOption getOrElse 0 // `headOption` is a method defined on all collections in Scala. We saw this function in chapter 3.
