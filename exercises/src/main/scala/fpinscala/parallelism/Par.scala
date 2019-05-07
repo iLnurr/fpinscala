@@ -77,6 +77,42 @@ object Par {
   def asyncF[A, B](f: A => B): A => Par[B] =
     a => lazyUnit(f(a))
 
+  def sequenceFR[A](ps: List[Par[A]]): Par[List[A]] =
+    ps.foldRight[Par[List[A]]](Par.unit(List.empty[A]))((p,acc) ⇒ map2(p,acc)(_ :: _))
+
+  // We define `sequenceBalanced` using `IndexedSeq`, which provides an
+  // efficient function for splitting the sequence in half.
+  def sequenceBalanced[A](as: IndexedSeq[Par[A]]): Par[IndexedSeq[A]] = fork {
+    if (as.isEmpty) unit(Vector())
+    else if (as.length == 1) map(as.head)(a => Vector(a))
+    else {
+      val (l,r) = as.splitAt(as.length/2)
+      map2(sequenceBalanced(l), sequenceBalanced(r))(_ ++ _)
+    }
+  }
+
+  def sequence[A](as: List[Par[A]]): Par[List[A]] =
+    map(sequenceBalanced(as.toIndexedSeq))(_.toList)
+
+  def parFilter[A](as: List[A])(f: A ⇒ Boolean): Par[List[A]] = fork {
+    val filtered = as.map(asyncF(Some(_).filter(f)))
+    map(sequence(filtered))(_.flatten)
+  }
+
+  def parMap[A,B](ps: List[A])(f: A => B): Par[List[B]] = fork {
+    val fbs: List[Par[B]] = ps.map(asyncF(f))
+    sequence(fbs)
+  }
+
+  def parFlat[A](as: Seq[A], default: A)(f: (A,A) ⇒ A): Par[A] =
+    if (as.size <= 1) {
+        unit(as.headOption.getOrElse(default))
+    } else {
+      val (l,r) = as.splitAt(as.length/2)
+      map2(parFlat(l,default)(f),parFlat(r,default)(f))(f)
+    }
+
+
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
@@ -86,7 +122,7 @@ object Par {
   }
 }
 
-object Examples {
+object Examples extends App {
   def sum(ints: IndexedSeq[Int]): Int = // `IndexedSeq` is a superclass of random-access sequences like `Vector` in the standard library. Unlike lists, these sequences provide an efficient `splitAt` method for dividing them into two parts at a particular index.
     if (ints.size <= 1)
       ints.headOption getOrElse 0 // `headOption` is a method defined on all collections in Scala. We saw this function in chapter 3.
@@ -94,5 +130,39 @@ object Examples {
       val (l,r) = ints.splitAt(ints.length/2) // Divide the sequence in half using the `splitAt` function.
       sum(l) + sum(r) // Recursively sum both halves and add the results together.
     }
+
+  import Par._
+  def max(ints: IndexedSeq[Int]): Int = {
+    if (ints.size <= 1)
+      ints.headOption getOrElse Int.MinValue
+    else {
+      val (l,r) = ints.splitAt(ints.length/2)
+      math.max(max(l),max(r))
+    }
+  }
+
+  def maxPar(ints: IndexedSeq[Int]): Par[Int] = {
+    if (ints.size <= 1)
+      unit(ints.headOption getOrElse Int.MinValue)
+    else {
+      val (l,r) = ints.splitAt(ints.length/2)
+      map2(maxPar(l),maxPar(r))(math.max)
+    }
+  }
+
+  def maxParFlat(ints: IndexedSeq[Int]): Par[Int] =
+    parFlat(ints,Int.MinValue)(math.max)
+
+  def sumPF(ints: IndexedSeq[Int]): Par[Int] =
+    parFlat(ints,0)(_ + _)
+
+  val l = List(1,2,3,4,5)
+
+  assert(max(l.toIndexedSeq) == 5)
+
+  val es = Executors.newCachedThreadPool()
+  assert(run(es)(maxPar(l.toIndexedSeq)).get() == 5)
+  assert(run(es)(maxParFlat(l.toIndexedSeq)).get() == 5)
+  assert(run(es)(sumPF(l.toIndexedSeq)).get() == 15)
 
 }
