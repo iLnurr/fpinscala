@@ -58,6 +58,10 @@ trait Stream[+A] {
       case (Cons(a, aa), Cons(b, bb)) ⇒ Some(f(a(),b()), aa() → bb())
     }
 
+  // special case of `zipWith`
+  def zip[B](s2: Stream[B]): Stream[(A,B)] =
+    zipWith(s2)((_,_))
+
   /**
     * The zipAll function should continue the traversal as long as either stream has more elements—
     * it uses Option to indicate whether each stream has been exhausted.
