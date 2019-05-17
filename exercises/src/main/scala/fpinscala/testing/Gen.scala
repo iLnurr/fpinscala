@@ -9,25 +9,28 @@ The library developed in this chapter goes through several iterations. This file
 shell, which you can fill in and modify while working through the chapter.
 */
 
-case class Prop(run: (TestCases, RNG) => Result) {
-  def &&(p: Prop): Prop = Prop{(tc,rng) =>
-    val first = this.run(tc,rng)
-    val sec = p.run(tc,rng)
+case class Prop(run: (MaxSize,TestCases, RNG) => Result) {
+  def &&(p: Prop): Prop = Prop{(ms,tc,rng) =>
+    val first = this.run(ms,tc,rng)
+    val sec = p.run(ms,tc,rng)
     if (first.isFalsified) first else sec
   }
 
-  def ||(p: Prop) = Prop{(tc,rng) =>
-    val first = this.run(tc,rng)
-    val sec = p.run(tc,rng)
+  def ||(p: Prop) = Prop{(ms,tc,rng) =>
+    val first = this.run(ms,tc,rng)
+    val sec = p.run(ms,tc,rng)
     if (first.isFalsified) sec else first
   }
 }
 
 object Prop {
-  type TestCases = Int
+  def apply(f: (TestCases,RNG) => Result): Prop =
+    Prop { (_,n,rng) => f(n,rng) }
   //type Result = Option[(FailedCase,SuccessCount)]//Either[(FailedCase,SuccessCount),SuccessCount]
   type FailedCase = String
   type SuccessCount = Int
+  type TestCases = Int
+  type MaxSize = Int
 
   sealed trait Result {
     def isFalsified: Boolean
@@ -59,15 +62,29 @@ object Prop {
     s"test case: $s\n" +
       s"generated an exception: ${e.getMessage}\n" +
       s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
+
+  def forAll[A](g: SGen[A])(f: A => Boolean): Prop =
+    forAll(g.forSize)(f)
+
+  def forAll[A](g: Int => Gen[A])(f: A => Boolean): Prop = Prop {
+    (max,n,rng) =>
+      val casesPerSize = (n + (max - 1)) / max
+      val props: Stream[Prop] = Stream.from(0).take((n min max) + 1).map(i => forAll(g(i))(f))
+      val prop: Prop = props.map(p => Prop { (max, _, rng) =>
+        p.run(max, casesPerSize, rng)
+      }).toList.reduce(_ && _)
+      prop.run(max,n,rng)
+  }
 }
 
-case class Gen[A](sample: State[RNG,A]) {
+case class Gen[+A](sample: State[RNG,A]) {
   def map[B](f: A => B): Gen[B] =
     Gen(sample.map(f))
   def flatMap[B](f: A => Gen[B]): Gen[B] =
     Gen(sample.flatMap(f(_).sample))
   def listOfN(size: Gen[Int]): Gen[List[A]] =
     size.flatMap(Gen.listOfN(_,this))
+  def unsized: SGen[A] = SGen[A](_ => this)
 }
 object Gen {
   def choose(start: Int, stopExclusive: Int): Gen[Int] =
@@ -92,5 +109,13 @@ object Gen {
     Gen(State(RNG.double).flatMap(d =>
       if (d < g1Threshold) g1._1.sample else g2._1.sample))
   }
+  def listOf[A](g: Gen[A]): SGen[List[A]] =
+    SGen(listOfN(_,g))
 }
 
+case class SGen[+A](forSize: Int => Gen[A]) {
+  def map[B](f: A => B): SGen[B] =
+    SGen[B](forSize(_).map(f))
+  def flatMap[B](f: A => SGen[B]): SGen[B] =
+    SGen[B](int => forSize(int).flatMap(f(_).forSize(int)))
+}
