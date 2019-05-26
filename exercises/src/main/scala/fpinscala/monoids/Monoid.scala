@@ -159,29 +159,45 @@ object Monoid {
   }
 
   def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] =
-    ???
+    new Monoid[Map[K, V]] {
+      def zero = Map[K,V]()
+      def op(a: Map[K, V], b: Map[K, V]) =
+        (a.keySet ++ b.keySet).foldLeft(zero) { (acc,k) =>
+          acc.updated(k, V.op(a.getOrElse(k, V.zero),
+            b.getOrElse(k, V.zero)))
+        }
+    }
 
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    ???
+    foldMapV(as, new Monoid[Map[A,Int]] {
+      override def op(a1: Map[A, Int], a2: Map[A, Int]): Map[A, Int] = a1 ++ a2
+      override def zero: Map[A, Int] = Map()
+    })(a => Map(a -> 1))
+
+  // We can get the dual of any monoid just by flipping the `op`.
+  def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    def op(x: A, y: A): A = m.op(y, x)
+    val zero = m.zero
+  }
 }
 
 trait Foldable[F[_]] {
   import Monoid._
 
   def foldRight[A, B](as: F[A])(z: B)(f: (A, B) => B): B =
-    ???
+    foldMap(as)(f.curried)(dual(endoMonoid[B]))(z)
 
   def foldLeft[A, B](as: F[A])(z: B)(f: (B, A) => B): B =
-    ???
+    foldMap(as)(a => (b: B) => f(b,a))(dual(endoMonoid[B]))(z)
 
   def foldMap[A, B](as: F[A])(f: A => B)(mb: Monoid[B]): B =
-    ???
+    foldLeft(as)(mb.zero){ case (b,a) => mb.op(b, f(a)) }
 
   def concatenate[A](as: F[A])(m: Monoid[A]): A =
-    ???
+    foldLeft(as)(m.zero)(m.op)
 
   def toList[A](as: F[A]): List[A] =
-    ???
+    foldLeft(as)(List.empty[A]){ case (acc,a) => a :: acc }
 }
 
 object ListFoldable extends Foldable[List] {
