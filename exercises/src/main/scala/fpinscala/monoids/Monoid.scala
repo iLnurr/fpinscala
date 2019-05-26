@@ -120,21 +120,43 @@ object Monoid {
   case class Stub(chars: String) extends WC
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] = 
-    ???
+  def par[A](m: Monoid[A]): Monoid[Par[A]] = new Monoid[Par[A]] {
+    override def op(a1: Par[A], a2: Par[A]): Par[A] = Par.map2(a1,a2)(m.op)
+    override def zero: Par[A] = Par.unit(m.zero)
+  }
 
-  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] = 
-    ???
+  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
+    Par.parMap(v)(f).map{ seq =>
+      foldMap(seq.toList, m)(identity)
+    }
 
-  val wcMonoid: Monoid[WC] = ???
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    override def op(a1: WC, a2: WC): WC = (a1,a2) match {
+      case (Stub(aa1),Stub(aa2)) => Stub(aa1 + aa2)
+      case (Stub(aa1),Part(l,w,r)) => Part(aa1 + l, w,r)
+      case (Part(l,w,r),Stub(aa1)) => Part(l,w,r + aa1)
+      case (Part(l1,w1,r1),Part(l2,w2,r2)) => Part(l1, w1 + (if ((r1 + l2).isEmpty) 0 else 1) + w2, r2)
+    }
+    override def zero: WC = Stub("")
+  }
 
-  def count(s: String): Int = ???
+  def count(s: String): Int =
+    foldMap(s.toList, wcMonoid){ c =>
+      if (c.isWhitespace) Part("", 0, "") else Stub(c.toString)
+    } match {
+      case Stub(st) => st.length
+      case Part(l,w,r) => l.length + w + r.length
+    }
 
-  def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
-    ???
+  def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] = new Monoid[(A, B)] {
+    override def op(a1: (A, B), a2: (A, B)): (A, B) = A.op(a1._1,a2._1) -> B.op(a1._2,a2._2)
+    override def zero: (A, B) = A.zero -> B.zero
+  }
 
-  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] =
-    ???
+  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] = new Monoid[A => B] {
+    override def op(a1: A => B, a2: A => B): A => B = a => B.op(a1(a), a2(a))
+    override def zero: A => B = _ => B.zero
+  }
 
   def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] =
     ???
