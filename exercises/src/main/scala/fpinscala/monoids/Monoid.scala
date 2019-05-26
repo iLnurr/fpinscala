@@ -100,8 +100,18 @@ object Monoid {
     foldRight(as)(z)((a,b) => f(b,a))
   }
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    ???
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    if (as.isEmpty) {
+      m.zero
+    } else {
+      if (as.size == 1) {
+        f(as.head)
+      } else {
+        val (l,r) = as.splitAt(as.size/2)
+        m.op(foldMapV(l,m)(f),foldMapV(r,m)(f))
+      }
+    }
+  }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     ???
