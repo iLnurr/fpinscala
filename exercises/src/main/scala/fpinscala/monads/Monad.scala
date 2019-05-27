@@ -105,7 +105,18 @@ object Monad {
     override def flatMap[A, B](ma: Id[A])(f: A => Id[B]): Id[B] = f(ma.value)
   }
 
+  type ReaderArrow[R,A] = R => A
+  object ReaderArrow {
+    def monad[R] = new Monad[({type T[A] = ReaderArrow[R,A]})#T] {
+      override def unit[A](a: => A): ReaderArrow[R, A] =
+        _ => a
+      override def flatMap[A, B](ma: ReaderArrow[R, A])(f: A => ReaderArrow[R, B]): ReaderArrow[R, B] = {r: R =>
+        f(ma(r))(r)
+      }
+    }
+  }
   def readerMonad[R] = Reader.readerMonad[R]
+  def readerArrowMonad[R] = ReaderArrow.monad[R]
 }
 
 case class Id[A](value: A) {
@@ -113,13 +124,14 @@ case class Id[A](value: A) {
   def flatMap[B](f: A => Id[B]): Id[B] = f(value)
 }
 
+import Monad._
 case class Reader[R, A](run: R => A)
 object Reader {
   def readerMonad[R] = new Monad[({type f[x] = Reader[R,x]})#f] {
     def unit[A](a: => A): Reader[R,A] =
       Reader(_ => a)
-    override def flatMap[A,B](st: Reader[R,A])(f: A => Reader[R,B]): Reader[R,B] = Reader{r =>
-      f(st.run(r)).run(r)
+    override def flatMap[A,B](st: Reader[R,A])(f: A => Reader[R,B]): Reader[R,B] = Reader{ r: R =>
+      f(st.run(r))(r)
     }
   }
 }
