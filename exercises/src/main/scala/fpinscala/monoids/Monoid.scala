@@ -114,7 +114,14 @@ object Monoid {
   }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
-    ???
+    foldMapV(ints, new Monoid[(Int,Boolean)] {
+      override def op(a1: (Int, Boolean), a2: (Int, Boolean)): (Int, Boolean) = {
+        val (a1I,a1b) = a1
+        val (a2I,a2b) = a2
+        a2I -> (a1b && a2b && (a2I >= a1I))
+      }
+      override def zero: (Int, Boolean) = Int.MinValue -> true
+    })(a => a -> true)._2
 
   sealed trait WC
   case class Stub(chars: String) extends WC
