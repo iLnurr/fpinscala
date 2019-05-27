@@ -1,4 +1,4 @@
-We can look at the associative law in terms of `flatMap` from another perspective. It says that `x.flatMap(f).flatMap(g)` is equal to `x.flatMap(a => f(a).flatMap(g))` _for all_ choices of `f` and `g`. So let's pick a particular `f` and `g` that's easy to think about. We can just pick the identity function:
+/**We can look at the associative law in terms of `flatMap` from another perspective. It says that `x.flatMap(f).flatMap(g)` is equal to `x.flatMap(a => f(a).flatMap(g))` _for all_ choices of `f` and `g`. So let's pick a particular `f` and `g` that's easy to think about. We can just pick the identity function:
 
 x.flatMap(z => z).flatMap(z => z) == x.flatMap(a => a.flatMap(z => z))
 

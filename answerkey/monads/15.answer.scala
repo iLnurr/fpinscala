@@ -1,4 +1,4 @@
-We can state the associative law in terms of `join`:
+/**We can state the associative law in terms of `join`:
 
 join(join(x)) == join(map(x)(join))
 

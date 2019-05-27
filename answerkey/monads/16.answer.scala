@@ -1,4 +1,4 @@
-Recall the identity laws:
+/**Recall the identity laws:
 
 left identity:  flatMap(unit(x))(f) == f(x)
 right identity: flatMap(x)(unit)    == x
