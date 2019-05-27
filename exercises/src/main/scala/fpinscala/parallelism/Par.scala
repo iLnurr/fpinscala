@@ -58,6 +58,11 @@ object Par {
   def map[A,B](pa: Par[A])(f: A => B): Par[B] = 
     map2(pa, unit(()))((a,_) => f(a))
 
+  def flatMap[A,B](p: Par[A])(f: A => Par[B]): Par[B] = (es: ExecutorService) => {
+    val a = run(es)(p).get() // blocking
+    f(a)(es)
+  }
+
   def sortPar(parList: Par[List[Int]]) = map(parList)(_.sorted)
 
   def equal[A](e: ExecutorService)(p: Par[A], p2: Par[A]): Boolean = 
@@ -117,8 +122,8 @@ object Par {
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
   class ParOps[A](p: Par[A]) {
-
-
+    def map[B](f: A => B): Par[B] = Par.map(p)(f)
+    def flatMap[B](f: A => Par[B]): Par[B] = Par.flatMap(p)(f)
   }
 }
 
