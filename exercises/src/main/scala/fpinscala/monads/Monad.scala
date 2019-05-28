@@ -131,7 +131,7 @@ object Reader {
     def unit[A](a: => A): Reader[R,A] =
       Reader(_ => a)
     override def flatMap[A,B](st: Reader[R,A])(f: A => Reader[R,B]): Reader[R,B] = Reader{ r: R =>
-      f(st.run(r))(r)
+      f(st.run(r)).run(r)
     }
   }
 }
