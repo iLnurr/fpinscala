@@ -104,6 +104,13 @@ object Monad {
 
   def composeM[F[_],N[_]](implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
     Monad[({type f[x] = F[N[x]]})#f] = ???
+
+  type Id[A] = A
+
+  val identityMonad = new Monad[Id] {
+    override def unit[A](a: => A): Id[A] = a
+    override def flatMap[A, B](a: A)(f: A => Id[B]): Id[B] = f(a)
+  }
 }
 
 sealed trait Validation[+E, +A]
@@ -151,7 +158,8 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def sequence[G[_]:Applicative,A](fma: F[G[A]]): G[F[A]] =
     traverse(fma)(ma => ma)
 
-  def map[A,B](fa: F[A])(f: A => B): F[B] = ???
+  def map[A,B](fa: F[A])(f: A => B): F[B] =
+    traverse[Monad.Id,A,B](fa)(f)(Monad.identityMonad)
 
   import Applicative._
 
@@ -186,11 +194,22 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
 }
 
 object Traverse {
-  val listTraverse = ???
+  val listTraverse = new Traverse[List] {
+    override def traverse[G[_], A, B](fa: List[A])(f: A => G[B])(implicit ga: Applicative[G]): G[List[B]] =
+      fa.foldRight(ga.unit(List.empty[B])){case (a,acc) => ga.map2(f(a),acc)(_ :: _)}
+  }
 
-  val optionTraverse = ???
+  val optionTraverse = new Traverse[Option] {
+    override def traverse[G[_], A, B](fa: Option[A])(f: A => G[B])(implicit ga: Applicative[G]): G[Option[B]] = fa match {
+      case Some(a) => ga.map(f(a))(b => Option(b))
+      case None => ga.unit(None)
+    }
+  }
 
-  val treeTraverse = ???
+  val treeTraverse = new Traverse[Tree] {
+    override def traverse[G[_], A, B](fa: Tree[A])(f: A => G[B])(implicit ga: Applicative[G]): G[Tree[B]] =
+      ga.map2(f(fa.head), listTraverse.traverse(fa.tail)(a => traverse(a)(f)))(Tree(_, _))
+  }
 }
 
 // The `get` and `set` functions on `State` are used above,
