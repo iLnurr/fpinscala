@@ -59,4 +59,9 @@ def fn[A,B](in: Cogen[A])(out: Gen[B]): Gen[A => B]
 
 You can pattern the implementation after `genStringFn`. Just follow the types!
 
-One problem with this approach is reporting test case failures back to the user. In the event of a failure, all the user will see is that for some opaque function, the property failed, which isn't very enlightening. There's been work in the Haskell library [QuickCheck](http://www.cse.chalmers.se/~rjmh/QuickCheck/manual.html) to be able to report back to the user and even _shrink_ down the generated functions to the simplest form that still falsifies the property. See [this talk on shrinking and showing functions](https://www.youtube.com/watch?v=CH8UQJiv9Q4).
+One problem with this approach is reporting test case failures back to the user. 
+In the event of a failure, 
+all the user will see is that for some opaque function, the property failed, which isn't very enlightening. 
+There's been work in the Haskell library [QuickCheck](http://www.cse.chalmers.se/~rjmh/QuickCheck/manual.html) 
+to be able to report back to the user and even _shrink_ down the generated functions to the simplest form that still falsifies the property. 
+See [this talk on shrinking and showing functions](https://www.youtube.com/watch?v=CH8UQJiv9Q4).
