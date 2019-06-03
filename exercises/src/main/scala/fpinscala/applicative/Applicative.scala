@@ -153,6 +153,7 @@ object Applicative {
 }
 
 trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
+  self =>
   def traverse[G[_]:Applicative,A,B](fa: F[A])(f: A => G[B]): G[F[B]] =
     sequence(map(fa)(f))
   def sequence[G[_]:Applicative,A](fma: F[G[A]]): G[F[A]] =
@@ -183,14 +184,23 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def zipWithIndex[A](fa: F[A]): F[(A, Int)] =
     mapAccum(fa, 0)((a, s) => ((a, s), s + 1))._1
 
-  def reverse[A](fa: F[A]): F[A] = ???
+  def reverse[A](fa: F[A]): F[A] =
+    mapAccum(fa, toList(fa).reverse)((_,as) => as.head -> as.tail)._1
 
-  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B = ???
+  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B =
+    mapAccum(fa,z)((a,b) => () -> f(b,a))._2
 
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
-                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = ???
+                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
+    val productApplicative: Applicative[({type f[x] = (G[x], H[x])})#f] = G.product(H)
+    traverse[({type f[x] = (G[x], H[x])})#f,A,B](fa)(a => (f(a),g(a)))(productApplicative)
+  }
 
-  def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] = ???
+  def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] = new Traverse[({type f[x] = F[G[x]]})#f] {
+    override def traverse[M[_] : Applicative, A, B](fa: F[G[A]])(f: A => M[B]): M[F[G[B]]] =
+      self.traverse(fa)(ga => G.traverse(ga)(f))
+  }
+
 }
 
 object Traverse {
@@ -210,6 +220,18 @@ object Traverse {
     override def traverse[G[_], A, B](fa: Tree[A])(f: A => G[B])(implicit ga: Applicative[G]): G[Tree[B]] =
       ga.map2(f(fa.head), listTraverse.traverse(fa.tail)(a => traverse(a)(f)))(Tree(_, _))
   }
+
+  def composeM[F[_],G[_]](FM: Monad[F], GM: Monad[G], GT: Traverse[G]): Monad[({type f[x] = F[G[x]]})#f] =
+    new Monad[({type f[x] = F[G[x]]})#f] {
+      override def unit[A](a: => A): F[G[A]] =
+        FM.unit(GM.unit(a))
+      override def flatMap[A, B](fga: F[G[A]])(a_TO_fgb: A => F[G[B]]): F[G[B]] =
+        FM.flatMap(fga){ ga =>
+          val fggb: F[G[G[B]]] = GT.traverse(ga)(a_TO_fgb)(FM)
+          val fgb: F[G[B]] = FM.map(fggb)(GM.join)
+          fgb
+        }
+    }
 }
 
 // The `get` and `set` functions on `State` are used above,
