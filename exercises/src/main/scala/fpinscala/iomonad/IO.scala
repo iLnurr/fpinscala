@@ -607,7 +607,16 @@ object IO3 {
 
   def read(file: AsynchronousFileChannel,
            fromPosition: Long,
-           numBytes: Int): Par[Either[Throwable, Array[Byte]]] = ???
+           numBytes: Int): Par[Either[Throwable, Array[Byte]]] =
+    Par.async { (cb: Either[Throwable, Array[Byte]] => Unit) =>
+      val array = ByteBuffer.allocate(numBytes)
+      file.read(array,fromPosition,(),new CompletionHandler[Integer,Unit] {
+        override def completed(result: Integer, attachment: Unit): Unit =
+          cb(Right(array.array()))
+        override def failed(exc: Throwable, attachment: Unit): Unit =
+          cb(Left(exc))
+      })
+  }
 
   // Provides the syntax `Async { k => ... }` for asyncronous IO blocks.
   def Async[A](cb: (A => Unit) => Unit): IO[A] =
