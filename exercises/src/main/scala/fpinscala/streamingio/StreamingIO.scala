@@ -312,7 +312,9 @@ object SimpleStreamTransducers {
     /*
      * Exercise 2: Implement `count`.
      */
-    def count[I]: Process[I,Int] = ???
+    def count[I]: Process[I,Int] =
+      lift[I,Int](_ => 1).zipWithIndex.map(t => t._1 + t._2)
+//      await(_ => emit(1, count.map(_ + 1)))
 
     /* For comparison, here is an explicit recursive implementation. */
     def count2[I]: Process[I,Int] = {
@@ -324,7 +326,11 @@ object SimpleStreamTransducers {
     /*
      * Exercise 3: Implement `mean`.
      */
-    def mean: Process[Double,Double] = ???
+    def mean: Process[Double,Double] = {
+      def go(sum: Double, count: Int): Process[Double, Double] =
+        await[Double,Double](i => emit((sum + i)/(count + 1), go(sum + i, count + 1)))
+      go(0.0,0)
+    }
 
     def loop[S,I,O](z: S)(f: (I,S) => (O,S)): Process[I,O] =
       await((i: I) => f(i,z) match {
@@ -333,9 +339,11 @@ object SimpleStreamTransducers {
 
     /* Exercise 4: Implement `sum` and `count` in terms of `loop` */
 
-    def sum2: Process[Double,Double] = ???
+    def sum2: Process[Double,Double] =
+      loop(0.0){case (el, acc) => (acc + el, acc + el)}
 
-    def count3[I]: Process[I,Int] = ???
+    def count3[I]: Process[I,Int] =
+      loop(0){case (_,count) => (count + 1, count + 1)}
 
     /*
      * Exercise 7: Can you think of a generic combinator that would
