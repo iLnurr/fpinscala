@@ -136,7 +136,19 @@ object SimpleStreamTransducers {
     /*
      * Exercise 5: Implement `|>`. Let the types guide your implementation.
      */
-    def |>[O2](p2: Process[O,O2]): Process[I,O2] = ???
+    def |>[O2](p2: Process[O,O2]): Process[I,O2] =
+      p2 match {
+        case Halt() => Halt[I,O2]()
+        case Emit(h,t) => Emit(h, this |> t)
+        case Await(recv) => this match {
+          case Halt() =>
+            this.|>(recv(None))
+          case Await(recvv) =>
+            Await(optionI => recvv(optionI) |> p2)
+          case Emit(h,t) =>
+            t |> recv(Some(h))
+        }
+      }
 
     /*
      * Feed `in` to this `Process`. Uses a tail recursive loop as long
@@ -200,7 +212,18 @@ object SimpleStreamTransducers {
     /*
      * Exercise 6: Implement `zipWithIndex`.
      */
-    def zipWithIndex: Process[I,(O,Int)] = ???
+    def zipWithIndex: Process[I,(O,Int)] = {
+      def recur(p: Process[I,O], count: Int): Process[I,(O,Int)] =
+        p match {
+          case Emit(head, tail) =>
+            Emit(head -> count, recur(tail, count + 1))
+          case Await(recv) =>
+            recur(recv(None), count)
+          case Halt() =>
+            Halt[I,(O,Int)]()
+        }
+      recur(this,0)
+    }
 
     /* Add `p` to the fallback branch of this process */
     def orElse(p: Process[I,O]): Process[I,O] = this match {
@@ -346,10 +369,30 @@ object SimpleStreamTransducers {
       loop(0){case (_,count) => (count + 1, count + 1)}
 
     /*
-     * Exercise 7: Can you think of a generic combinator that would
-     * allow for the definition of `mean` in terms of `sum` and
-     * `count`?
+     * Exercise 6: Implement `zipWithIndex`.
+     *
+     * See definition on `Process` above.
      */
+
+
+    /*
+    * Exercise 7: Can you think of a generic combinator that would
+    * allow for the definition of `mean` in terms of `sum` and
+    * `count`?
+    * Yes, it is `zip`, which feeds the same input to two processes.
+    * The implementation is a bit tricky, as we have to make sure
+    * that input gets fed to both `p1` and `p2`.
+    */
+    def zip[A,B,C](p1: Process[A,B], p2: Process[A,C]): Process[A,(B,C)] =
+      (p1, p2) match {
+        case (Halt(), _) => Halt()
+        case (_, Halt()) => Halt()
+        case (Emit(b, t1), Emit(c, t2)) => Emit((b,c), zip(t1, t2))
+        case (Await(recv1), _) =>
+          Await((oa: Option[A]) => zip(recv1(oa), feed(oa)(p2)))
+        case (_, Await(recv2)) =>
+          Await((oa: Option[A]) => zip(feed(oa)(p1), recv2(oa)))
+      }
 
     def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
       p match {
@@ -357,12 +400,13 @@ object SimpleStreamTransducers {
         case Emit(h,t) => Emit(h, feed(oa)(t))
         case Await(recv) => recv(oa)
       }
+    def mean2: Process[Double,Double] =
+      await(d =>
+        zip(feed(Some(d))(sum), feed(Some(d))(count))
+      ).map{
+        case (sum,count) => sum / count
+      }
 
-    /*
-     * Exercise 6: Implement `zipWithIndex`.
-     *
-     * See definition on `Process` above.
-     */
 
     /*
      * Exercise 8: Implement `exists`
