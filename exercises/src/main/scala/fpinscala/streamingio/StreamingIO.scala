@@ -1,6 +1,9 @@
 package fpinscala.streamingio
 
-import fpinscala.iomonad.{IO,Monad,Free,unsafePerformIO}
+import java.io.File
+
+import fpinscala.iomonad.{Free, IO, Monad, unsafePerformIO}
+
 import language.implicitConversions
 import language.higherKinds
 import language.postfixOps
@@ -415,7 +418,22 @@ object SimpleStreamTransducers {
      * See `existsResult` below for a trimmed version.
      */
     def exists[I](f: I => Boolean): Process[I,Boolean] =
-      lift(f) |> await(b => if(b) emit(b) else Halt())
+      lift(f) |> any
+
+    /* Emits whether a `true` input has ever been received. */
+    def any: Process[Boolean,Boolean] =
+      loop(false)((b:Boolean,s) => (s || b, s || b))
+
+    /* A trimmed `exists`, containing just the final result. */
+    def existsResult[I](f: I => Boolean) =
+      exists(f) |> takeThrough(!_) |> dropWhile(!_) |> echo.orElse(emit(false))
+
+    /*
+     * Like `takeWhile`, but includes the first element that tests
+     * false.
+     */
+    def takeThrough[I](f: I => Boolean): Process[I,I] =
+      takeWhile(f) ++ echo
 
     /* Awaits then emits a single value, then halts. */
     def echo[I]: Process[I,I] = await(i => emit(i))
@@ -444,6 +462,8 @@ object SimpleStreamTransducers {
       finally s.close
     }
 
+    processFile(new File("."), count |> exists(_ > 40000), false)(_ || _)
+
     /*
      * Exercise 9: Write a program that reads degrees fahrenheit as `Double` values from a file,
      * converts each temperature to celsius, and writes results to another file.
@@ -451,6 +471,12 @@ object SimpleStreamTransducers {
 
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
+
+    def readFahrenheits(f: File): IO[List[Double]] = {
+      def process: Process[String, Double] =
+        filter[String](_.trim.nonEmpty) |> filter(!_.contains("#")) |> await[String,Double](s => emit(toCelsius(s.toDouble)))
+      processFile(f, process, List[Double]()){case (acc,el) => el :: acc}
+    }
   }
 }
 
