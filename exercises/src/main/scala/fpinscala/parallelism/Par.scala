@@ -35,7 +35,8 @@ object Par {
       case None =>
         val start = System.nanoTime
         val ar = a.get(timeoutInNanos, TimeUnit.NANOSECONDS)
-        val stop = System.nanoTime;val aTime = stop-start
+        val stop = System.nanoTime
+        val aTime = stop-start
         val br = b.get(timeoutInNanos - aTime, TimeUnit.NANOSECONDS)
         val ret = f(ar, br)
         cache.set(Some(ret))
